@@ -188,13 +188,13 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         warped_image = four_point_transform(img, RotY, RotX)
 
         # get the pixel directly below the drone (not the center of the image)
-        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
+        #drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
 
         # Ground sampling distance calculations using
         GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
 
-        rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
-        #rotate_image= ndimage.rotate(warped_image, yaw_deg, (1, 0))
+        #rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
+        rotate_image= ndimage.rotate(warped_image, -yaw_deg, (1, 0))
         temp_filename = jpg_filename + '.jpg'
 
         cv2.imwrite(temp_filename, rotate_image)
@@ -219,11 +219,10 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
 gdal_merge = "gdal_merge.py -v -n 0 -o out.tif "
 tif_files = glob.glob(EXAMPLE_DIR + '/*.tif')
 for tif in tif_files:
-    gdal_merge = gdal_merge + " " + tif_files
+    gdal_merge = gdal_merge + " " + tif
 
 os.system(gdal_merge)
 
-     # cv2.imshow('img', dst)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+for tif in tif_files:
+    os.remove(tif)
 
