@@ -6,6 +6,7 @@ import os
 import math
 from scipy import ndimage
 from scipy import misc
+from osgeo import gdal
 
 #testing 
 import matplotlib.pyplot as plt
@@ -139,7 +140,8 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
 
     for row in details_reader:
         # important columns X est,Y est,Z est,Yaw est,Pitch est,Roll est
-        img = cv2.imread(os.path.join(EXAMPLE_DIR, row['Filename']))
+        jpg_filename = os.path.join(EXAMPLE_DIR, row['Filename'])
+        img = cv2.imread(jpg_filename)
         height, width = img.shape[:2]
         print height
         print width
@@ -174,7 +176,8 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
 
         #rotate_image = rotateImage(warped_image, yaw_degrees, (drone_pixel_x, drone_pixel_y))
         rotate_image= ndimage.rotate(warped_image, yaw_degrees, (1, 0))
-        cv2.imwrite(os.path.join(EXAMPLE_DIR, row['Filename']) + '.tif', rotate_image)
+        tif_filename = jpg_filename + '.tif'
+        cv2.imwrite(tif_filename, rotate_image)
         
         height, width = rotate_image.shape[:2]
         print height
