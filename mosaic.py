@@ -37,33 +37,18 @@ def order_points(pts):
     return rect
 
 def pitch_roll_pts(height, width, RotY, RotX):
-    pts = np.matrix([[0,      0,  width,  width], 
-                    [height,  0,  0,      height],
-                    [1,       1,  1,      1]])
-
+    pts = np.matrix([[0, 0, width, width], [height, 0, 0, height],[1, 1, 1, 1]])
     print pts
     pts = RotY * RotX * pts
-
-    coords = np.array([(pts[0,0], pts[1, 0]), 
-              (pts[0,1], pts[1, 1]), 
-              (pts[0,2], pts[1, 2]), 
-              (pts[0,3], pts[1, 3])])
-
+    coords = np.array([(pts[0,0], pts[1, 0]), (pts[0,1], pts[1, 1]), (pts[0,2], pts[1, 2]), (pts[0,3], pts[1, 3])])
     return order_points(coords)
 
 def create_src_rect(height, width):
-    pts = np.matrix([[0,      0,  width,  width], 
-                    [height,  0,  0,      height],
-                    [1,       1,  1,      1]])
-
-    coords = np.array([(pts[0,0], pts[1, 0]), 
-              (pts[0,1], pts[1, 1]), 
-              (pts[0,2], pts[1, 2]), 
-              (pts[0,3], pts[1, 3])])
-
+    pts = np.matrix([[0, 0, width, width], [height, 0, 0, height], [1, 1, 1, 1]])
+    coords = np.array([(pts[0,0], pts[1, 0]), (pts[0,1], pts[1, 1]), (pts[0,2], pts[1, 2]), (pts[0,3], pts[1, 3])])
     return order_points(coords)
 
-def four_point_transform(image, RotY, RotX):
+def four_point_transform(img, RotY, RotX):
     height, width = img.shape[:2]
 
     src_rect = create_src_rect(height, width)
@@ -89,11 +74,12 @@ def four_point_transform(image, RotY, RotX):
     # compute the perspective transform matrix and then apply it
     print src_rect
     print dst_rect
-    M = cv2.getPerspectiveTransform(dst_rect, src_rect)
+    # M, mask = cv2.findHomography(src_rect, dst_rect, cv2.RANSAC, 5.0) return same result for M
+    M = cv2.getPerspectiveTransform(src_rect, dst_rect)
     print M
-    M = cv2.findHomography(src_rect, dst_rect, cv2.RANSAC, 5.0)
+    
     print M
-    warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+    warped = cv2.warpPerspective(img, M, (maxWidth, maxHeight))
  
     # return the warped image
     return warped
@@ -134,16 +120,13 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         print width
         misc.imsave('face.png', warped_image)
 
-        dst = cv2.resize(warped_image, (width/4, height/4), interpolation = cv2.INTER_CUBIC)
-
-
-
+    
         rotate_image= ndimage.rotate(warped_image, yaw_degrees, (1, 0))
         height, width = rotate_image.shape[:2]
         print height
         print width
 
-
+        dst = cv2.resize(rotate_image, (width/4, height/4), interpolation = cv2.INTER_CUBIC)
 
         cv2.imshow('img', dst)
         cv2.waitKey(0)
