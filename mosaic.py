@@ -193,7 +193,7 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         # Ground sampling distance calculations using
         GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
 
-        rotate_image = rotateImage(warped_image, yaw_deg, (drone_pixel_x, drone_pixel_y))
+        rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
         #rotate_image= ndimage.rotate(warped_image, yaw_deg, (1, 0))
         temp_filename = jpg_filename + '.jpg'
 
@@ -206,23 +206,6 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         height, width = rotate_image.shape[:2]
         ulx, uly, lrx, lry = envelopeFromImage(rotate_image, lon_deg, lat_deg, width / 2, height / 2, GSD)
 
-        #TODO Remove
-        #Open output format driver, see gdal_translate --formats for list
-        # format = "GTiff"
-        # driver = gdal.GetDriverByName(format)
-
-        # #Output to new format
-        # dst_ds = driver.CreateCopy(temp_filename, src_ds, 0)
-
-        # # srs = osr.SpatialReference()
-        # # srs = srs.SetWellKnownGeogCS( "WGS84" )
-        # # dst_ds.SetProjection(srs.ExportToWkt())
-        # print 'Driver: ', dst_ds.GetDriver().ShortName,'/', dst_ds.GetDriver().LongName
-
-        # #Properly close the datasets to flush to disk
-        # dst_ds = None
-        # src_ds = None
-        #TODO Remove
 
         env = "-a_ullr " + str(ulx) + " " + str(uly) + " " + str(lrx) + " " + str(lry) + " "
         gdal_tif_filename = jpg_filename + 'gdal.tif'
