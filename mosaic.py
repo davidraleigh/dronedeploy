@@ -7,6 +7,7 @@ import math
 from scipy import ndimage
 from scipy import misc
 import gdal
+import osr
 
 #testing 
 import matplotlib.pyplot as plt
@@ -94,25 +95,25 @@ def four_point_transform(img, RotY, RotX):
     # return the warped image
     return warped
 
-def calculateDronePositionPixel(img, pitch_radians, roll_radians):
+def calculateDronePositionPixel(img, pitch_rad, roll_rad):
     height, width = img.shape[:2]
 
-    shift_x = FOCAL_LENGTH_MM * math.tan(roll_radians) * (width / CCD_WIDTH_MM)
-    shift_y = FOCAL_LENGTH_MM * math.tan(pitch_radians) * (height / CCD_HEIGHT_MM)
+    shift_x = FOCAL_LENGTH_MM * math.tan(roll_rad) * (width / CCD_WIDTH_MM)
+    shift_y = FOCAL_LENGTH_MM * math.tan(pitch_rad) * (height / CCD_HEIGHT_MM)
     
     center_x = width / 2.0
     center_y = height / 2.0
 
     return int(center_y + shift_y), int(center_x + shift_x)
 
-def cmPerPixel(img, pitch_radians, roll_radians, elevation):
+def cmPerPixel(img, pitch_rad, roll_rad, elevation_m):
     height, width = img.shape[:2]
 
-    pitch_offset = elevation * math.tan(pitch_radians)
-    roll_offset = elevation * math.tan(roll_radians)
+    pitch_offset = elevation_m * math.tan(pitch_rad)
+    roll_offset = elevation_m * math.tan(roll_rad)
 
-    distance = math.sqrt(math.sqrt(pitch_offset**2 + roll_offset**2) + elevation**2)
-    return (CCD_WIDTH_MM * distance * 100)/(FOCAL_LENGTH_MM * width)
+    distance_m = math.sqrt(math.sqrt(pitch_offset**2 + roll_offset**2) + elevation_m**2)
+    return (CCD_WIDTH_MM * distance_m * 100)/(FOCAL_LENGTH_MM * width)
 
 #http://stackoverflow.com/questions/25458442/rotate-a-2d-image-around-specified-origin-in-python
 def rotateImage(img, angle, pivot):
@@ -122,6 +123,40 @@ def rotateImage(img, angle, pivot):
     imgP = np.pad(img, [padY, padX, [0, 0]], 'constant')
     imgR = ndimage.rotate(imgP, angle, reshape=False)
     return imgR
+
+def coordsFromAziDistance(lat1_deg, lon1_deg, azimuth_deg, distance_cm):
+    radius_km = 6378.1 #Radius of the Earth
+
+    azimuth_rad = math.radians(azimuth_deg)
+    distance_km = distance_cm / 100000
+    lat1_rad = math.radians(lat1_deg) #Current lat point converted to radians
+    lon1_rad = math.radians(lon1_deg) #Current long point converted to radians
+
+    lat2_rad = math.asin( math.sin(lat1_rad)*math.cos(distance_km/radius_km) + math.cos(lat1_rad)*math.sin(distance_km/radius_km)*math.cos(azimuth_rad))
+    lon2_rad = lon1_rad + math.atan2(math.sin(azimuth_rad)*math.sin(distance_km/radius_km)*math.cos(lat1_rad), math.cos(distance_km/radius_km)-math.sin(lat1_rad)*math.sin(lat2_rad))
+
+    lat2_deg = math.degrees(lat2_rad)
+    lon2_deg = math.degrees(lon2_rad)
+
+    return lon2_deg, lat2_deg 
+
+
+def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
+    height, width = img.shape[:2]
+    
+    #               up               right                       down                        left
+    azimuths_deg = [0.0,            90.0,                       180.0,                      270.0]
+    distances_cm = [y_pixel * GSD,  (width - x_pixel) * GSD,    (height - y_pixel) * GSD,   x_pixel * GSD]
+
+    lon_null, lat_up = coordsFromAziDistance(lat1_deg, lon1_deg, azimuths_deg[0], distances_cm[0])
+    lon_right, lat_null = coordsFromAziDistance(lat1_deg, lon1_deg, azimuths_deg[1], distances_cm[1])
+    lon_null, lat_down = coordsFromAziDistance(lat1_deg, lon1_deg, azimuths_deg[2], distances_cm[2])
+    lon_left, lat_null = coordsFromAziDistance(lat1_deg, lon1_deg, azimuths_deg[3], distances_cm[3])
+
+    #ulx uly lrx lry
+    return lon_left, lat_up, lon_right, lat_down
+
+
     
 with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
     details_reader = csv.DictReader(image_details_csv)
@@ -134,60 +169,78 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         img = cv2.imread(jpg_filename)
 
         # get yaw, pitch, roll and elevation
-        yaw_degrees = float(row['Yaw est']) 
-        pitch_radians = math.radians(float(row['Pitch est']))
-        roll_radians = math.radians(float(row['Roll est']))
+        yaw_deg = float(row['Yaw est']) 
+        pitch_rad = math.radians(float(row['Pitch est']))
+        roll_rad = math.radians(float(row['Roll est']))
         elevation_meters = float(row['Z est'])
 
         # pitch rotation (axis through wing perpendicular to flight path)
-        RotY = np.matrix([[math.cos(pitch_radians) , 0, math.sin(pitch_radians)],
+        RotY = np.matrix([[math.cos(pitch_rad) , 0, math.sin(pitch_rad)],
                           [0                       , 1, 1                      ],
-                          [-math.sin(pitch_radians), 0, math.cos(pitch_radians)]])
+                          [-math.sin(pitch_rad), 0, math.cos(pitch_rad)]])
 
         # roll rotation (axis through direction of flight path)
         RotX = np.matrix([[1, 0                     , 0                      ],
-                          [0, math.cos(roll_radians), -math.sin(roll_radians)],
-                          [0, math.sin(roll_radians), math.cos(roll_radians) ]])
+                          [0, math.cos(roll_rad), -math.sin(roll_rad)],
+                          [0, math.sin(roll_rad), math.cos(roll_rad) ]])
 
         # use rotation matrices to adjust image for pitch and roll errors. Rotate about the center of image.
         warped_image = four_point_transform(img, RotY, RotX)
 
         # get the pixel directly below the drone (not the center of the image)
-        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_radians, roll_radians)
+        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
 
         # Ground sampling distance calculations using
-        GSD = cmPerPixel(warped_image, pitch_radians, roll_radians, elevation_meters)
+        GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
 
-        #rotate_image = rotateImage(warped_image, yaw_degrees, (drone_pixel_x, drone_pixel_y))
-        rotate_image= ndimage.rotate(warped_image, yaw_degrees, (1, 0))
-        tif_filename = jpg_filename + '.tif'
+        rotate_image = rotateImage(warped_image, yaw_deg, (drone_pixel_x, drone_pixel_y))
+        #rotate_image= ndimage.rotate(warped_image, yaw_deg, (1, 0))
+        temp_filename = jpg_filename + '.jpg'
 
-        cv2.imwrite(tif_filename, rotate_image)
+        cv2.imwrite(temp_filename, rotate_image)
 
-        src_ds = gdal.Open(tif_filename)
+        src_ds = gdal.Open(temp_filename)
 
-        #Open output format driver, see gdal_translate --formats for list
-        format = "GTiff"
-        driver = gdal.GetDriverByName( format )
-
-        #Output to new format
-        dst_ds = driver.CreateCopy( tif_filename, src_ds, 0 )
-
-        print 'Driver: ', dst_ds.GetDriver().ShortName,'/', dst_ds.GetDriver().LongName
-        #Properly close the datasets to flush to disk
-        dst_ds = None
-        src_ds = None
-
-        
-        
+        lon_deg = float(row['X est'])
+        lat_deg = float(row['Y est'])
         height, width = rotate_image.shape[:2]
+        ulx, uly, lrx, lry = envelopeFromImage(rotate_image, lon_deg, lat_deg, width / 2, height / 2, GSD)
 
-        # dst = cv2.resize(rotate_image, (width/4, height/4), interpolation = cv2.INTER_CUBIC)
+        #TODO Remove
+        #Open output format driver, see gdal_translate --formats for list
+        # format = "GTiff"
+        # driver = gdal.GetDriverByName(format)
 
-        # cv2.imshow('img', dst)
+        # #Output to new format
+        # dst_ds = driver.CreateCopy(temp_filename, src_ds, 0)
+
+        # # srs = osr.SpatialReference()
+        # # srs = srs.SetWellKnownGeogCS( "WGS84" )
+        # # dst_ds.SetProjection(srs.ExportToWkt())
+        # print 'Driver: ', dst_ds.GetDriver().ShortName,'/', dst_ds.GetDriver().LongName
+
+        # #Properly close the datasets to flush to disk
+        # dst_ds = None
+        # src_ds = None
+        #TODO Remove
+
+        env = "-a_ullr " + str(ulx) + " " + str(uly) + " " + str(lrx) + " " + str(lry) + " "
+        gdal_tif_filename = jpg_filename + 'gdal.tif'
+        os.system("gdal_translate -co compress=LZW -of GTiff -a_srs EPSG:4326 -a_nodata 0 " + env + temp_filename + " " +  gdal_tif_filename)
+
+        # cleanup temp file
+        os.remove(temp_filename)
+        
+
+
+gdal_merge = "gdal_merge.py -v -n 0 -o out.tif "
+tif_files = glob.glob(EXAMPLE_DIR + '/*.tif')
+for tif in tif_files:
+    gdal_merge = gdal_merge + " " + tif_files
+
+os.system(gdal_merge)
+
+     # cv2.imshow('img', dst)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
 
-
-tif_files = glob.glob(EXAMPLE_DIR + '*.tif')
-print tif_files
