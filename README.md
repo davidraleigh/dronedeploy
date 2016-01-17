@@ -1,5 +1,14 @@
 # dronedeploy
 
+## required libraries:
+```bash
+$ pip install geopy
+$ brew install gdal
+$ brew install opencv3
+$ brew install scipy
+```
+
+
 ### Notes on yaw, pitch and roll
 ![Drone coordinate system](https://www.av8n.com/physics/img48/yaw-pitch-roll.png)
 
