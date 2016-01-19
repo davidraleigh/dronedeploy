@@ -55,8 +55,10 @@ def pitch_roll_pts(height, width, RotY, RotX):
     # pts represent the corners of the image that will be tilted about the center
     pts = np.matrix([[0, 0, width, width], [height, 0, 0, height],[0, 0, 0, 0]])
 
+    center_x = width / 2.0
+    center_y = height / 2.0
     # the offset is needed to tilt the pts about the center instead of about the origin
-    centerOffset = np.matrix([[width/2,width/2,width/2,width/2],[height/2,height/2,height/2,height/2],[0, 0, 0, 0]])
+    centerOffset = np.matrix([[center_x,center_x,center_x,center_x],[center_y,center_y,center_y,center_y],[0, 0, 0, 0]])
     # shift coordinates so that origin is the center of the image
     pts = pts - centerOffset
 
@@ -123,16 +125,33 @@ def cmPerPixel(img, pitch_rad, roll_rad, elevation_m):
 
 #http://stackoverflow.com/questions/25458442/rotate-a-2d-image-around-specified-origin-in-python
 def rotateImage(img, angle, pivot):
-    padX = [img.shape[1] - pivot[0], pivot[0]]
-    padY = [img.shape[0] - pivot[1], pivot[1]]
+    padX = [pivot[1], img.shape[1] - pivot[1]]
+    padY = [pivot[0], img.shape[0] - pivot[0]]
+    print 'pad X'
     print padX
+    print 'pad y'
     print padY
+    print 'input image shape'
     print img.shape[:2]
+    print 'pivot point'
+    print pivot
+    print 'input image'
+    # plt.imshow(img)
+    # plt.show()
     #imgP = np.pad(img, [padY, padX], 'constant')
     imgP = np.pad(img, [padY, padX, [0, 0]], 'constant')
+    print 'padded image shape'
     print imgP.shape[:2]
-    print pivot
+    print 'padded image'
+    # plt.imshow(imgP)
+    # plt.show()
+    
     imgR = ndimage.rotate(imgP, angle, reshape=False)
+    print 'padded rotated shape'
+    print imgP.shape[:2]
+    print 'rotated image'
+    # plt.imshow(imgR)
+    # plt.show()
     return imgR
 
 def coordsFromAziDistance(lat1_deg, lon1_deg, azimuth_deg, distance_cm):
@@ -187,6 +206,8 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         jpg_filename = os.path.join(EXAMPLE_DIR, row['Filename'])
 
         # open file for opencv
+        if (os.path.isfile(jpg_filename) == False):
+            continue
         img = cv2.imread(jpg_filename)
 
         # get yaw, pitch, roll and elevation
@@ -209,6 +230,14 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         warped_image = four_point_transform(img, RotY, RotX)
 
         # get the pixel directly below the drone (not the center of the image)
+        print 'height img'
+        height, width = img.shape[:2]
+        print height
+        print width
+        print 'height warped_image'
+        height, width = warped_image.shape[:2]
+        print height
+        print width
         drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
         print drone_pixel_x
         print drone_pixel_y
@@ -216,22 +245,22 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         print drone_pixel_x
         print drone_pixel_y
 
+        rotated_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
+        #rotated_image= ndimage.rotate(img, -yaw_deg, (1, 0))
+        
+        temp_filename = jpg_filename + '.jpg'
+        cv2.imwrite(temp_filename, rotated_image)
 
         # Ground sampling distance calculations using
+        print 'GSD'
         GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
-
-        rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
-        #rotate_image= ndimage.rotate(warped_image, -yaw_deg, (1, 0))
-        temp_filename = jpg_filename + '.jpg'
-
-        cv2.imwrite(temp_filename, rotate_image)
-
-        src_ds = gdal.Open(temp_filename)
+        print GSD
+        print ''
 
         lon_deg = float(row['X est'])
         lat_deg = float(row['Y est'])
-        height, width = rotate_image.shape[:2]
-        ulx, uly, lrx, lry = envelopeFromImage(rotate_image, lon_deg, lat_deg, width / 2, height / 2, GSD)
+        height, width = rotated_image.shape[:2]
+        ulx, uly, lrx, lry = envelopeFromImage(rotated_image, lon_deg, lat_deg, width / 2, height / 2, GSD)
 
 
         env = "-a_ullr " + str(ulx) + " " + str(uly) + " " + str(lrx) + " " + str(lry) + " "
@@ -242,7 +271,9 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         os.remove(temp_filename)
         
 
-os.remove('out.tif')
+if (os.path.isfile('out.tif')):
+    os.remove('out.tif')
+
 gdal_merge = "gdal_merge.py -v -n 0 -o out.tif "
 tif_files = glob.glob(EXAMPLE_DIR + '/*.tif')
 for tif in tif_files:
