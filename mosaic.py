@@ -125,33 +125,10 @@ def cmPerPixel(img, pitch_rad, roll_rad, elevation_m):
 
 #http://stackoverflow.com/questions/25458442/rotate-a-2d-image-around-specified-origin-in-python
 def rotateImage(img, angle, pivot):
-    padX = [pivot[1], img.shape[1] - pivot[1]]
-    padY = [pivot[0], img.shape[0] - pivot[0]]
-    print 'pad X'
-    print padX
-    print 'pad y'
-    print padY
-    print 'input image shape'
-    print img.shape[:2]
-    print 'pivot point'
-    print pivot
-    print 'input image'
-    # plt.imshow(img)
-    # plt.show()
-    #imgP = np.pad(img, [padY, padX], 'constant')
+    padX = [img.shape[1] - pivot[1], pivot[1]]
+    padY = [img.shape[0] - pivot[0], pivot[0]]
     imgP = np.pad(img, [padY, padX, [0, 0]], 'constant')
-    print 'padded image shape'
-    print imgP.shape[:2]
-    print 'padded image'
-    # plt.imshow(imgP)
-    # plt.show()
-    
     imgR = ndimage.rotate(imgP, angle, reshape=False)
-    print 'padded rotated shape'
-    print imgP.shape[:2]
-    print 'rotated image'
-    # plt.imshow(imgR)
-    # plt.show()
     return imgR
 
 def coordsFromAziDistance(lat1_deg, lon1_deg, azimuth_deg, distance_cm):
@@ -187,33 +164,39 @@ def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
     return lon_left, lat_up, lon_right, lat_down
 
 def retrieveExampleData():
-    print 'retriving data'
-    response = urllib2.urlopen('https://s3.amazonaws.com/drone.deploy.map.engine/example.zip')
-    zipcontent= response.read()
-    with open("example.zip", 'w') as f:
-        f.write(zipcontent)
+    if (os.path.exists("./example.zip") == False):
+        print 'retriving data'
+        response = urllib2.urlopen('https://s3.amazonaws.com/drone.deploy.map.engine/example.zip')
+        zipcontent= response.read()
+        with open("example.zip", 'w') as f:
+            f.write(zipcontent)
+
     with zipfile.ZipFile("./example.zip") as zf:
         zf.extractall("./example")
 
 if (os.path.exists(EXAMPLE_DIR) == False):
     retrieveExampleData()
-    
+
+roll_pitch_list = []
 with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
     details_reader = csv.DictReader(image_details_csv)
 
-    for row in details_reader:
+    for row in details_reader:        
         # important columns X est,Y est,Z est,Yaw est,Pitch est,Roll est
         jpg_filename = os.path.join(EXAMPLE_DIR, row['Filename'])
 
         # open file for opencv
         if (os.path.isfile(jpg_filename) == False):
             continue
+        # add row to evaluation list for gdal
+        roll_pitch_list.append(row)          
+
         img = cv2.imread(jpg_filename)
 
         # get yaw, pitch, roll and elevation
         yaw_deg = float(row['Yaw est']) 
-        pitch_rad = math.radians(float(row['Pitch est']))
-        roll_rad = math.radians(float(row['Roll est']))
+        pitch_rad = -math.radians(float(row['Pitch est']))
+        roll_rad = -math.radians(float(row['Roll est']))
         elevation_meters = float(row['Z est'])
 
         # pitch rotation (axis through wing perpendicular to flight path)
@@ -230,18 +213,7 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         warped_image = four_point_transform(img, RotY, RotX)
 
         # get the pixel directly below the drone (not the center of the image)
-        print 'height img'
-        height, width = img.shape[:2]
-        print height
-        print width
-        print 'height warped_image'
-        height, width = warped_image.shape[:2]
-        print height
-        print width
         drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
-        print drone_pixel_x
-        print drone_pixel_y
-        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(img, pitch_rad, roll_rad)
         print drone_pixel_x
         print drone_pixel_y
 
@@ -271,14 +243,33 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         os.remove(temp_filename)
         
 
+#sort list by roll and pitch magnitude:
+def rollPitchSize(item):
+    return math.fabs(float(item['Roll est'])) + math.fabs(float(item['Pitch est']))
+
+def compare(item1, item2):
+    if rollPitchSize(item1) < rollPitchSize(item2):
+        return -1
+    elif rollPitchSize(item1) > rollPitchSize(item2):
+        return 1
+    else:
+        return 0
+
+# sort images by roll and pitch angle, so that most distorted images are at bottom    
+roll_pitch_list = sorted(roll_pitch_list, cmp=compare, reverse=True)
+
+# remove previous output to prevent gdal from mergin results
 if (os.path.isfile('out.tif')):
     os.remove('out.tif')
 
+# create gdal command
 gdal_merge = "gdal_merge.py -v -n 0 -o out.tif "
-tif_files = glob.glob(EXAMPLE_DIR + '/*.tif')
-for tif in tif_files:
+for item in roll_pitch_list:
+    # print rollPitchSize(item)
+    tif = os.path.join(EXAMPLE_DIR, item['Filename'] + 'gdal.tif')
     gdal_merge = gdal_merge + " " + tif
 
+# execute merge
 os.system(gdal_merge)
 
 # for tif in tif_files:
