@@ -8,6 +8,8 @@ from scipy import ndimage
 from scipy import misc
 import gdal
 import osr
+import urllib2
+import zipfile
 
 #testing 
 import matplotlib.pyplot as plt
@@ -24,6 +26,7 @@ FOCAL_LENGTH_35_MM = 20.0
 FOCAL_LENGTH_MM = (FOCAL_LENGTH_35_MM * CCD_WIDTH_MM) / 34.6
 
 # http://www.pyimagesearch.com/2014/08/25/4-point-opencv-getperspective-transform-example/
+# order the envelope points so that they are clockwise starting at upper left
 def order_points(pts):
     # initialzie a list of coordinates that will be ordered
     # such that the first entry in the list is the top-left,
@@ -49,27 +52,30 @@ def order_points(pts):
 
 
 def pitch_roll_pts(height, width, RotY, RotX):
+    # pts represent the corners of the image that will be tilted about the center
     pts = np.matrix([[0, 0, width, width], [height, 0, 0, height],[0, 0, 0, 0]])
+
+    # the offset is needed to tilt the pts about the center instead of about the origin
     centerOffset = np.matrix([[width/2,width/2,width/2,width/2],[height/2,height/2,height/2,height/2],[0, 0, 0, 0]])
     # shift coordinates so that origin is the center of the image
     pts = pts - centerOffset
+
     # rotate image about the center and add the offset back into the coordinates
     pts = RotY * RotX * pts + centerOffset
+
     coords = np.array([(pts[0,0], pts[1, 0]), (pts[0,1], pts[1, 1]), (pts[0,2], pts[1, 2]), (pts[0,3], pts[1, 3])])
     return order_points(coords)
 
 def create_src_rect(height, width):
-    #pts = np.matrix([[0, 0, width, width], [height, 0, 0, height], [1, 1, 1, 1]])
-    #coords = np.array([(pts[0,0], pts[1, 0]), (pts[0,1], pts[1, 1]), (pts[0,2], pts[1, 2]), (pts[0,3], pts[1, 3])])
     coords = np.array([(0, height), (0, 0), (width, 0), (width, height)])
     return order_points(coords)
 
 def four_point_transform(img, RotY, RotX):
     height, width = img.shape[:2]
 
+    # the from pts to be warped
     src_rect = create_src_rect(height, width)
-    # obtain a consistent order of the points and unpack them
-    # individually
+    # the rotated destination pts
     dst_rect = pitch_roll_pts(height, width, RotY, RotX)
     (tl, tr, br, bl) = dst_rect
  
@@ -119,8 +125,13 @@ def cmPerPixel(img, pitch_rad, roll_rad, elevation_m):
 def rotateImage(img, angle, pivot):
     padX = [img.shape[1] - pivot[0], pivot[0]]
     padY = [img.shape[0] - pivot[1], pivot[1]]
+    print padX
+    print padY
+    print img.shape[:2]
     #imgP = np.pad(img, [padY, padX], 'constant')
     imgP = np.pad(img, [padY, padX, [0, 0]], 'constant')
+    print imgP.shape[:2]
+    print pivot
     imgR = ndimage.rotate(imgP, angle, reshape=False)
     return imgR
 
@@ -156,7 +167,17 @@ def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
     #ulx uly lrx lry
     return lon_left, lat_up, lon_right, lat_down
 
+def retrieveExampleData():
+    print 'retriving data'
+    response = urllib2.urlopen('https://s3.amazonaws.com/drone.deploy.map.engine/example.zip')
+    zipcontent= response.read()
+    with open("example.zip", 'w') as f:
+        f.write(zipcontent)
+    with zipfile.ZipFile("./example.zip") as zf:
+        zf.extractall("./example")
 
+if (os.path.exists(EXAMPLE_DIR) == False):
+    retrieveExampleData()
     
 with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
     details_reader = csv.DictReader(image_details_csv)
@@ -188,13 +209,19 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         warped_image = four_point_transform(img, RotY, RotX)
 
         # get the pixel directly below the drone (not the center of the image)
-        #drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
+        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
+        print drone_pixel_x
+        print drone_pixel_y
+        drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(img, pitch_rad, roll_rad)
+        print drone_pixel_x
+        print drone_pixel_y
+
 
         # Ground sampling distance calculations using
         GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
 
-        #rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
-        rotate_image= ndimage.rotate(warped_image, -yaw_deg, (1, 0))
+        rotate_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
+        #rotate_image= ndimage.rotate(warped_image, -yaw_deg, (1, 0))
         temp_filename = jpg_filename + '.jpg'
 
         cv2.imwrite(temp_filename, rotate_image)
@@ -215,7 +242,7 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         os.remove(temp_filename)
         
 
-
+os.remove('out.tif')
 gdal_merge = "gdal_merge.py -v -n 0 -o out.tif "
 tif_files = glob.glob(EXAMPLE_DIR + '/*.tif')
 for tif in tif_files:
@@ -223,6 +250,6 @@ for tif in tif_files:
 
 os.system(gdal_merge)
 
-for tif in tif_files:
-    os.remove(tif)
+# for tif in tif_files:
+#     os.remove(tif)
 
