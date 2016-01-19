@@ -9,7 +9,7 @@ $ brew install scipy
 ```
 
 ## running the script:
-To run the script you must have installed the above libraries. This script has only been tested with python 2.7. The script will download the examples data. If there is no internet connection, you must put the 'examples' directory at the same level as the 'mosaic.py' script.
+To run the script you must have installed the above libraries. This script has only been tested with python 2.7. The script will download the 'example' data. If there is no internet connection, you must put the 'example' directory at the same level as the 'mosaic.py' script.
 ```bash
 $ python mosaic.py
 ```
