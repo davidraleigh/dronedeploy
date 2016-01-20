@@ -1,5 +1,20 @@
 # dronedeploy
 
+## required libraries:
+```bash
+$ pip install geopy
+$ brew install gdal
+$ brew install opencv3
+$ brew install scipy
+```
+
+## running the script:
+To run the script you must have installed the above libraries. This script has only been tested with python 2.7. The script will download the 'example' data. If there is no internet connection, you must put the 'example' directory at the same level as the 'mosaic.py' script.
+```bash
+$ python mosaic.py
+```
+
+
 ### Notes on yaw, pitch and roll
 ![Drone coordinate system](https://www.av8n.com/physics/img48/yaw-pitch-roll.png)
 
