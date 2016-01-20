@@ -153,6 +153,7 @@ def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
     
     #               up               right                       down                        left
     azimuths_deg = [0.0,            90.0,                       180.0,                      270.0]
+
     distances_cm = [y_pixel * GSD,  (width - x_pixel) * GSD,    (height - y_pixel) * GSD,   x_pixel * GSD]
 
     lon_null, lat_up = coordsFromAziDistance(lat1_deg, lon1_deg, azimuths_deg[0], distances_cm[0])
@@ -245,7 +246,8 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
 
 #sort list by roll and pitch magnitude:
 def rollPitchSize(item):
-    return math.fabs(float(item['Roll est'])) + math.fabs(float(item['Pitch est']))
+    return math.fabs(float(item['Yaw est']))# 
+    #return math.fabs(float(item['Roll est'])) + math.fabs(float(item['Pitch est']))
 
 def compare(item1, item2):
     if rollPitchSize(item1) < rollPitchSize(item2):
