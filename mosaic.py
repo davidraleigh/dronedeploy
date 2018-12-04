@@ -8,8 +8,7 @@ from scipy import ndimage
 from scipy import misc
 import gdal
 import osr
-import urllib2
-import zipfile
+import requests, zipfile, io
 
 #testing 
 import matplotlib.pyplot as plt
@@ -167,13 +166,13 @@ def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
 def retrieveExampleData():
     if (os.path.exists("./example.zip") == False):
         print('retriving data')
-        response = urllib2.urlopen('https://s3.amazonaws.com/drone.deploy.map.engine/example.zip')
-        zipcontent= response.read()
-        with open("example.zip", 'w') as f:
-            f.write(zipcontent)
+        zip_file_url = 'https://s3.amazonaws.com/drone.deploy.map.engine/example.zip'
+        r = requests.get(zip_file_url)
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        z.extractall('./example')
 
-    with zipfile.ZipFile("./example.zip") as zf:
-        zf.extractall("./example")
+    # with zipfile.ZipFile("./example.zip") as zf:
+    #     zf.extractall('./example')
 
 if (os.path.exists(EXAMPLE_DIR) == False):
     retrieveExampleData()
