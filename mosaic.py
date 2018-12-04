@@ -166,7 +166,7 @@ def envelopeFromImage(img, lon1_deg, lat1_deg, x_pixel, y_pixel, GSD):
 
 def retrieveExampleData():
     if (os.path.exists("./example.zip") == False):
-        print 'retriving data'
+        print('retriving data')
         response = urllib2.urlopen('https://s3.amazonaws.com/drone.deploy.map.engine/example.zip')
         zipcontent= response.read()
         with open("example.zip", 'w') as f:
@@ -215,8 +215,8 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
 
         # get the pixel directly below the drone (not the center of the image)
         drone_pixel_x, drone_pixel_y = calculateDronePositionPixel(warped_image, pitch_rad, roll_rad)
-        print drone_pixel_x
-        print drone_pixel_y
+        print(drone_pixel_x)
+        print(drone_pixel_y)
 
         rotated_image = rotateImage(warped_image, -yaw_deg, (drone_pixel_x, drone_pixel_y))
         #rotated_image= ndimage.rotate(img, -yaw_deg, (1, 0))
@@ -225,10 +225,10 @@ with open(IMAGE_DETAILS_FILE, 'r') as image_details_csv:
         cv2.imwrite(temp_filename, rotated_image)
 
         # Ground sampling distance calculations using
-        print 'GSD'
+        print('GSD')
         GSD = cmPerPixel(warped_image, pitch_rad, roll_rad, elevation_meters)
-        print GSD
-        print ''
+        print(GSD)
+        print('')
 
         lon_deg = float(row['X est'])
         lat_deg = float(row['Y est'])
